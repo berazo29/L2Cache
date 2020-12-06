@@ -8,7 +8,7 @@ import subprocess
 
 def main():
 
-    autograter = 'pa5_autograter'
+    autograder = 'pa5_autograder'
     projectFolder = 'pa5'
     path = os.getcwd()
     print("The current working directory is %s", path)
@@ -66,8 +66,8 @@ def main():
     p.wait()
 
     try:
-        os.scandir(autograter)
-        shutil.move(projectFolder, autograter)
+        os.scandir(autograder)
+        shutil.move(projectFolder, autograder)
     except OSError:
         print("Move manually the {}".format(projectFolder))
     else:
