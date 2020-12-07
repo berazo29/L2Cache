@@ -23,9 +23,11 @@ int calculateSets(size_t cache_size,size_t block_size,unsigned int assocAction, 
 size_t ** createNewCache(int sets, int blocks);
 void deleteCache(size_t ** cache, int sets, int blocks);
 int searchAddressInCache(size_t** cache, size_t address, int num_block_offsets, int num_sets, int blocks);
+size_t** FIFO(size_t** cache, size_t address, int blocks_offset, int sets, int blocks,size_t **cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2);
 size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blocks);
-size_t** insertNewTagToCache(size_t** cache, size_t address, int blocks_offset, int sets, int blocks);
-void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets, int blocks, int cache_policy);
+void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets, int blocks, int cache_policy,size_t** cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2, int cache_policy_l2);
+
+
 void printGlobalVars();
 
 // GLOBAL
@@ -49,16 +51,24 @@ int SET_BITS_L2 = 0;
 int OFFSET_BITS_L2 = 0;
 
 // Print for graters
-void printSubmitOutputFormat(){
+void printSubmitOutputFormat(int dev){
 
-    printf("memread:%d\n", MEM_READS);
-    printf("memwrite:%d\n", MEM_WRITES);
-    printf("l1cachehit:%d\n", CACHE_HITS_L1);
-    printf("l1cachemiss:%d\n", CACHE_MISS_L1);
-    printf("l2cachehit:%d\n", CACHE_HITS_L2);
-    printf("l2cachemiss:%d\n", CACHE_MISS_L2);
+    if (dev == 1){
+        printf("memread:%d\n", MEM_READS-CACHE_HITS_L2);
+        printf("memwrite:%d\n", MEM_WRITES);
+        printf("l1cachehit:%d\n", CACHE_HITS_L1);
+        printf("l1cachemiss:%d\n", CACHE_MISS_L1);
+        printf("l2cachehit:%d\n", CACHE_HITS_L2);
+        printf("l2cachemiss:%d\n", MEM_READS-CACHE_HITS_L2);
+    } else{
+        printf("memread:%d\n", MEM_READS);
+        printf("memwrite:%d\n", MEM_WRITES);
+        printf("l1cachehit:%d\n", CACHE_HITS_L1);
+        printf("l1cachemiss:%d\n", CACHE_MISS_L1);
+        printf("l2cachehit:%d\n", CACHE_HITS_L2);
+        printf("l2cachemiss:%d\n", CACHE_MISS_L2);
+    }
 }
-
 
 int main( int argc, char *argv[argc+1]) {
 
@@ -140,17 +150,17 @@ int main( int argc, char *argv[argc+1]) {
     SET_BITS_L2 = log(NUM_SETS_L2) / log(2);
     OFFSET_BITS_L2 = log(block_size_l2) / log(2);
 
-    printGlobalVars();
+    //printGlobalVars();
 
     // Create a new cache_l1
     size_t** cache_l1 = createNewCache(NUM_SETS_L1, NUM_BLOCKS_L1);
     size_t** cache_l2 = createNewCache(NUM_SETS_L2, NUM_BLOCKS_L2);
 
     // Receive the address and simulate the cache_l1
-    updateCache(fp, cache_l1, OFFSET_BITS_L1, SET_BITS_L1, NUM_BLOCKS_L1, cache_policy_l1);
+    updateCache(fp, cache_l1, OFFSET_BITS_L1, SET_BITS_L1, NUM_BLOCKS_L1, cache_policy_l1, cache_l2, OFFSET_BITS_L2, SET_BITS_L2, NUM_BLOCKS_L2, cache_policy_l2);
 
     // Print the results
-    printSubmitOutputFormat();
+    printSubmitOutputFormat(1);
 
     // Close the file and destroy memory allocations
     fclose(fp);
@@ -159,9 +169,84 @@ int main( int argc, char *argv[argc+1]) {
 
     return EXIT_SUCCESS;
 }
+// read from trace file and read/write addresses
+void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets, int blocks, int cache_policy,size_t** cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2, int cache_policy_l2){
+
+    // Set the policy to FIFO or LRU
+    int isLRU;
+    if (cache_policy == 1){
+        isLRU=0;
+    } else if ( cache_policy == 2){
+        isLRU=1;
+    }
+
+    char action;
+    size_t address;
+    // reads until end of file
+    while((fscanf(trace_file, "%c %zx\n", &action, &address) != EOF) && (action != '#')){
+
+        // Increment for each write
+        if(action != 'R') {
+            MEM_WRITES++;
+        }
+
+        int isHit = searchAddressInCache(cache, address, blocks_offset, sets, blocks);
+        if(isHit == 1){
+            CACHE_HITS_L1++;
+
+            // Use th LRU eviction policy
+            if(isLRU != 0){
+                // update which block has been most recently used
+                cache = LRU(cache, address, blocks_offset, sets, blocks);
+            }
+        }else {
+            // Update miss and MEM_READS
+            int isHit2 = searchAddressInCache(cache_l2, address, blocks_offset_l2, sets_l2, blocks_l2);
+            if (isHit2 == 1){
+                CACHE_HITS_L2++;
+            }
+            CACHE_MISS_L1++;
+            MEM_READS++;
+
+            cache = FIFO(cache, address, blocks_offset, sets, blocks,cache_l2, blocks_offset_l2,sets_l2,blocks_l2);
+        }
+    }
+}
+// Insert in the cache 2
+size_t **FIFOCACHE2(size_t** cache, size_t address, int blocks_offset, int sets, int blocks){
+
+    size_t index = (address >> blocks_offset) & ((1 << sets) - 1);
+
+    int flag = 0;
+    int i;
+
+    // Add to the cache
+    for(i = 0; i < blocks; i++){
+
+        // Eviction is not required
+
+        if(cache[index][i] == (size_t) NULL){
+            // Store the address
+            //cache[index][i] = address >> (blocks_offset + sets);
+            cache[index][i] = address;
+            flag = 1;
+            break;
+        }
+    }
+    if( flag == 0 ){
+
+        for(i = 1; i < blocks; i++){
+            cache[index][i - 1] = cache[index][i];
+        }
+        // Store only the address
+        //cache[index][blocks - 1] = address >> (blocks_offset + sets);
+        cache[index][blocks - 1] = address;
+    }
+    return cache;
+}
 
 // insert the cache
-size_t** insertNewTagToCache(size_t** cache, size_t address, int blocks_offset, int sets, int blocks){
+size_t** FIFO(size_t** cache, size_t address, int blocks_offset, int sets, int blocks,size_t **cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2){
 
     size_t index = (address >> blocks_offset) & ((1 << sets) - 1);
 
@@ -173,17 +258,21 @@ size_t** insertNewTagToCache(size_t** cache, size_t address, int blocks_offset, 
 
         // Eviction is not required
         if(cache[index][i] == (size_t) NULL){
-            cache[index][i] = address >> (blocks_offset + sets);
+            // Store the address
+            //cache[index][i] = address >> (blocks_offset + sets);
+            cache[index][i] = address;
             flag = 1;
             break;
         }
     }
     if( flag == 0 ){
-
+        cache_l2 = FIFOCACHE2(cache_l2, cache[index][0], blocks_offset_l2, sets_l2, blocks_l2);
         for(i = 1; i < blocks; i++){
             cache[index][i - 1] = cache[index][i];
         }
-        cache[index][blocks - 1] = address >> (blocks_offset + sets);
+        // Store only the address
+        //cache[index][blocks - 1] = address >> (blocks_offset + sets);
+        cache[index][blocks - 1] = address;
     }
     return cache;
 }
@@ -192,7 +281,7 @@ size_t** insertNewTagToCache(size_t** cache, size_t address, int blocks_offset, 
 size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blocks){
     // use bit manipulation to obtain the the corresponding set and tag
     size_t index = (address >> block_offset) & ((1 << sets) - 1);
-    size_t tag = address >> (block_offset + sets);
+    //size_t tag = address >> (block_offset + sets);
     int flag = 0;
     int i;
     for(i = 0; i < blocks - 1; i++){
@@ -200,12 +289,13 @@ size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blo
             break;
         }
         // Find for a true flag
-        if(cache[index][i] == tag || flag){
+        //if(cache[index][i] == tag || flag){
+        if(cache[index][i] == address || flag){
             flag = 1;
             cache[index][i] = cache[index][i + 1];
         }
     }
-    cache[index][i] = tag;
+    cache[index][i] = address;
 
     return cache;
 }
@@ -216,7 +306,8 @@ int searchAddressInCache(size_t** cache, size_t address, int num_block_offsets, 
     // Find the set in the block 1 for true and 0 for false
     for(int i = 0; i < blocks; i++){
 
-        if ((address >> (num_sets + num_block_offsets)) == cache[setIndex][i]){
+        //if ((address >> (num_sets + num_block_offsets)) == cache[setIndex][i]){
+        if (address == cache[setIndex][i]){
             return 1;
         }
     }
@@ -248,45 +339,6 @@ void deleteCache(size_t ** cache, int sets, int blocks){
     cache = NULL;
 }
 
-// read from trace file and read/write addresses
-void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets, int blocks, int cache_policy){
-
-    // Set the policy to FIFO or LRU
-    int isLRU;
-    if (cache_policy == 1){
-        isLRU=0;
-    } else if ( cache_policy == 2){
-        isLRU=1;
-    }
-
-    char action;
-    size_t address;
-    // reads until end of file
-    while((fscanf(trace_file, "%c %zx\n", &action, &address) != EOF) && (action != '#')){
-
-        // Increment for each write
-        if(action != 'R') {
-            MEM_WRITES++;
-        }
-
-        int isHit = searchAddressInCache(cache, address, blocks_offset, sets, blocks);
-        if(isHit == 1){
-            CACHE_HITS_L1++;
-
-            // Use th LRU eviction policy
-            if(isLRU != 0){
-                // update which block has been most recently used
-                cache = LRU(cache, address, blocks_offset, sets, blocks);
-            }
-        }else {
-            // Update miss and MEM_READS
-            CACHE_MISS_L1++;
-            MEM_READS++;
-
-            cache = insertNewTagToCache(cache, address, blocks_offset, sets, blocks);
-        }
-    }
-}
 // Create an empty cache with given capacity or lines
 int calculateSets(size_t cache_size,size_t block_size,unsigned int assocAction, size_t assoc){
     int set=0;
