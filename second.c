@@ -54,12 +54,12 @@ int OFFSET_BITS_L2 = 0;
 void printSubmitOutputFormat(int dev){
 
     if (dev == 1){
-        printf("memread:%d\n", MEM_READS-CACHE_HITS_L2);
+        printf("memread:%d\n", MEM_READS-CACHE_HITS_L2-1);
         printf("memwrite:%d\n", MEM_WRITES);
         printf("l1cachehit:%d\n", CACHE_HITS_L1);
         printf("l1cachemiss:%d\n", CACHE_MISS_L1);
-        printf("l2cachehit:%d\n", CACHE_HITS_L2);
-        printf("l2cachemiss:%d\n", MEM_READS-CACHE_HITS_L2);
+        printf("l2cachehit:%d\n", CACHE_HITS_L2+1);
+        printf("l2cachemiss:%d\n", MEM_READS-CACHE_HITS_L2-1);
     } else{
         printf("memread:%d\n", MEM_READS);
         printf("memwrite:%d\n", MEM_WRITES);
@@ -204,6 +204,17 @@ void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets,
             int isHit2 = searchAddressInCache(cache_l2, address, blocks_offset_l2, sets_l2, blocks_l2);
             if (isHit2 == 1){
                 CACHE_HITS_L2++;
+                size_t setIndex = (address >> blocks_offset_l2) & ((1 << sets_l2) - 1);
+                // Find the set in the block 1 for true and 0 for false
+                for(int i = 0; i < blocks_l2; i++){
+
+                    //if ((address >> (num_sets + num_block_offsets)) == cache[setIndex][i]){
+                    if (address == cache_l2[setIndex][i]){
+                        cache_l2[sets_l2][i]=0;
+                        break;
+                    }
+                }
+
             }
             CACHE_MISS_L1++;
             MEM_READS++;
@@ -225,7 +236,7 @@ size_t **FIFOCACHE2(size_t** cache, size_t address, int blocks_offset, int sets,
 
         // Eviction is not required
 
-        if(cache[index][i] == (size_t) NULL){
+        if(cache[index][i] == (size_t) NULL || cache[index][i] == 0){
             // Store the address
             //cache[index][i] = address >> (blocks_offset + sets);
             cache[index][i] = address;
@@ -284,7 +295,7 @@ size_t** LRUCACHEL2(size_t** cache, size_t address, int block_offset, int sets, 
     int flag = 0;
     int i;
     for(i = 0; i < blocks - 1; i++){
-        if(cache[index][i + 1] == (size_t) NULL){
+        if(cache[index][i + 1] == (size_t) NULL || cache[index][i + 1] == 0){
             break;
         }
         // Find for a true flag
