@@ -26,70 +26,98 @@ int searchAddressInCache(size_t** cache, size_t address, int num_block_offsets, 
 size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blocks);
 size_t** insertNewTagToCache(size_t** cache, size_t address, int blocks_offset, int sets, int blocks);
 void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets, int blocks, int cache_policy);
+void printGlobalVars();
 
 // GLOBAL
 int MEM_READS = 0;
 int MEM_WRITES = 0;
-int CACHE_HITS = 0;
-int CACHE_MISS = 0;
-int NUM_SETS = 0;
-int NUM_BLOCKS = 0;
-int SET_BITS = 0;
-int OFFSET_BITS = 0;
+
+// CACHE L1
+int CACHE_HITS_L1 = 0;
+int CACHE_MISS_L1 = 0;
+int NUM_SETS_L1 = 0;
+int NUM_BLOCKS_L1 = 0;
+int SET_BITS_L1 = 0;
+int OFFSET_BITS_L1 = 0;
+
+// CACHE L2
+int CACHE_HITS_L2 = 0;
+int CACHE_MISS_L2 = 0;
+int NUM_SETS_L2 = 0;
+int NUM_BLOCKS_L2 = 0;
+int SET_BITS_L2 = 0;
+int OFFSET_BITS_L2 = 0;
 
 // Print for graters
 void printSubmitOutputFormat(){
 
     printf("memread:%d\n", MEM_READS);
     printf("memwrite:%d\n", MEM_WRITES);
-    printf("cachehit:%d\n", CACHE_HITS);
-    printf("cachemiss:%d\n", CACHE_MISS);
+    printf("l1cachehit:%d\n", CACHE_HITS_L1);
+    printf("l1cachemiss:%d\n", CACHE_MISS_L1);
+    printf("l2cachehit:%d\n", CACHE_HITS_L2);
+    printf("l2cachemiss:%d\n", CACHE_MISS_L2);
 }
+
 
 int main( int argc, char *argv[argc+1]) {
 
-    long cache_size;
-    long block_size;
+    long cache_size_l1;
+    long block_size_l1;
+    long cache_size_l2;
+    long block_size_l2;
 
     //File name from arguments
-    if (argc != 6 ){
-        printf("DEV Error 1: Give 5 arg as int: cache_size, str: associativity, str: cache_policy, int: block_size, str: trace_file\n");
+    if (argc != 9 ){
+        printf("DEV Error 1: Give 5 arg as int: cache_size_l1, str: associativity_l1, str: cache_policy_l1, int: block_size_l1, int: cache_size_l2, str: associativity_l2, str: cache_policy_l2, str: trace_file\n");
         printf("error");
         return EXIT_SUCCESS;
     }
-    // Check for power of 2 for cache_size and block_size
-    cache_size = getCacheSize(argv[1]);
-    block_size = getBlockSize(argv[4]);
-    if (cache_size == 0 || block_size == 0){
-        printf("DEV Error 2: cache_size and block_size must be power of 2 and > 0\n");
+    // Check for power of 2 for cache_size_l1 and block_size_l1
+    cache_size_l1 = getCacheSize(argv[1]);
+    block_size_l1 = getBlockSize(argv[4]);
+    cache_size_l2 = getCacheSize(argv[5]);
+    block_size_l2 = block_size_l1;
+    if (cache_size_l1 == 0 || block_size_l1 == 0){
+        printf("DEV Error 2: cache_size_l1 and block_size_l1 must be power of 2 and > 0\n");
         printf("error");
         return EXIT_SUCCESS;
     }
-    long associativity;
-    unsigned int associativityAction = checkAssociativityInput(argv[2]);
+    long associativity_l1;
+    unsigned int associativityAction_l1 = checkAssociativityInput(argv[2]);
+    long associativity_l2;
+    unsigned int associativityAction_l2 = checkAssociativityInput(argv[6]);
 
-    // action 1,2,3 -> direct, fully, n associativity and 0 is error
-    if (associativityAction == 1){
-        associativity = 1;
-    } else if (associativityAction == 2){
-        associativity = calculateNumberCacheAddresses(cache_size, block_size);
-    } else if (associativityAction == 3){
-        associativity = getAssociativity(argv[2]);
+    // action 1,2,3 -> direct, fully, n associativity_l1 and 0 is error
+    if (associativityAction_l1 == 1){
+        associativity_l1 = 1;
+    } else if (associativityAction_l1 == 2){
+        associativity_l1 = calculateNumberCacheAddresses(cache_size_l1, block_size_l1);
+    } else if (associativityAction_l1 == 3){
+        associativity_l1 = getAssociativity(argv[2]);
     } else{
-        //printf("DEV ERROR: associativityAction input is incorrect\n");
+        //printf("DEV ERROR: associativityAction_l1 input is incorrect\n");
         return 0;
     }
-    int cache_policy = getCachePolicy(argv[3]);
+    // action 1,2,3 -> direct, fully, n associativity_l2 and 0 is error
+    if (associativityAction_l2 == 1){
+        associativity_l2 = 1;
+    } else if (associativityAction_l2 == 2){
+        associativity_l2 = calculateNumberCacheAddresses(cache_size_l2, block_size_l2);
+    } else if (associativityAction_l2 == 3){
+        associativity_l2 = getAssociativity(argv[6]);
+    } else{
+        //printf("DEV ERROR: associativityAction_l1 input is incorrect\n");
+        return 0;
+    }
 
-//    printf("cache_size: %lu\n",cache_size);
-//    printf("block_size: %lu\n",block_size);
-//    printf("associativityAction: %d\n",associativityAction);
-//    printf("associativity: %lu\n",associativity);
-//    printf("cache_policy: %d\n",cache_policy);
+    int cache_policy_l1 = getCachePolicy(argv[3]);
+    int cache_policy_l2 = getCachePolicy(argv[7]);
+
 
     // Declare the read file and read it
     FILE *fp;
-    fp = fopen( argv[5], "r");
+    fp = fopen( argv[8], "r");
     // Check if the file is empty
     if ( fp == NULL ){
         //printf("DEV Error 3:Unable to read the file\n");
@@ -98,26 +126,36 @@ int main( int argc, char *argv[argc+1]) {
     }
 
 
-    // Calculate parameters for the new cache
-    NUM_SETS = calculateSets(cache_size, block_size, associativityAction, associativity);
-    NUM_BLOCKS = cache_size / (block_size * NUM_SETS);
+    // Calculate parameters for the new cache_l1
+    NUM_SETS_L1 = calculateSets(cache_size_l1, block_size_l1, associativityAction_l1, associativity_l1);
+    NUM_BLOCKS_L1 = cache_size_l1 / (block_size_l1 * NUM_SETS_L1);
+    NUM_SETS_L2 = calculateSets(cache_size_l2, block_size_l2, associativityAction_l2, associativity_l2);
+    NUM_BLOCKS_L2 = cache_size_l2 / (block_size_l2 * NUM_SETS_L2);
+
+
 
     // Calculate the sets and offset bits
-    SET_BITS = log(NUM_SETS) / log(2);
-    OFFSET_BITS = log(block_size) / log(2);
+    SET_BITS_L1 = log(NUM_SETS_L1) / log(2);
+    OFFSET_BITS_L1 = log(block_size_l1) / log(2);
+    SET_BITS_L2 = log(NUM_SETS_L2) / log(2);
+    OFFSET_BITS_L2 = log(block_size_l2) / log(2);
 
-    // Create a new cache
-    size_t** cache = createNewCache(NUM_SETS, NUM_BLOCKS);
+    printGlobalVars();
 
-    // Receive the address and simulate the cache
-    updateCache(fp, cache, OFFSET_BITS, SET_BITS, NUM_BLOCKS, cache_policy);
+    // Create a new cache_l1
+    size_t** cache_l1 = createNewCache(NUM_SETS_L1, NUM_BLOCKS_L1);
+    size_t** cache_l2 = createNewCache(NUM_SETS_L2, NUM_BLOCKS_L2);
+
+    // Receive the address and simulate the cache_l1
+    updateCache(fp, cache_l1, OFFSET_BITS_L1, SET_BITS_L1, NUM_BLOCKS_L1, cache_policy_l1);
 
     // Print the results
     printSubmitOutputFormat();
 
     // Close the file and destroy memory allocations
     fclose(fp);
-    deleteCache(cache, NUM_SETS, NUM_BLOCKS);
+    deleteCache(cache_l1, NUM_SETS_L1, NUM_BLOCKS_L1);
+    deleteCache(cache_l2, NUM_SETS_L2, NUM_BLOCKS_L2);
 
     return EXIT_SUCCESS;
 }
@@ -233,7 +271,7 @@ void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets,
 
         int isHit = searchAddressInCache(cache, address, blocks_offset, sets, blocks);
         if(isHit == 1){
-            CACHE_HITS++;
+            CACHE_HITS_L1++;
 
             // Use th LRU eviction policy
             if(isLRU != 0){
@@ -242,7 +280,7 @@ void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets,
             }
         }else {
             // Update miss and MEM_READS
-            CACHE_MISS++;
+            CACHE_MISS_L1++;
             MEM_READS++;
 
             cache = insertNewTagToCache(cache, address, blocks_offset, sets, blocks);
@@ -491,4 +529,11 @@ int getCachePolicy(char *arg){
 }
 size_t calculateNumberCacheAddresses(size_t cache_size, size_t cache_block ){
     return cache_size/cache_block;
+}
+
+void printGlobalVars(){
+    printf("NUM_SETS_L1: %d\n",NUM_SETS_L1);
+    printf("NUM_BLOCKS_L1: %d\n",NUM_BLOCKS_L1);
+    printf("NUM_SETS_L2: %d\n",NUM_SETS_L2);
+    printf("NUM_BLOCKS_L2: %d\n",NUM_BLOCKS_L2);
 }
