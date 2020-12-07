@@ -24,7 +24,7 @@ size_t ** createNewCache(int sets, int blocks);
 void deleteCache(size_t ** cache, int sets, int blocks);
 int searchAddressInCache(size_t** cache, size_t address, int num_block_offsets, int num_sets, int blocks);
 size_t** FIFO(size_t** cache, size_t address, int blocks_offset, int sets, int blocks,size_t **cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2);
-size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blocks);
+size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blocks, size_t **cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2);
 void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets, int blocks, int cache_policy,size_t** cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2, int cache_policy_l2);
 
 
@@ -197,7 +197,7 @@ void updateCache(FILE * trace_file, size_t** cache, int blocks_offset, int sets,
             // Use th LRU eviction policy
             if(isLRU != 0){
                 // update which block has been most recently used
-                cache = LRU(cache, address, blocks_offset, sets, blocks);
+                cache = LRU(cache, address, blocks_offset, sets, blocks, cache_l2, blocks_offset_l2,sets_l2,blocks);
             }
         }else {
             // Update miss and MEM_READS
@@ -276,9 +276,8 @@ size_t** FIFO(size_t** cache, size_t address, int blocks_offset, int sets, int b
     }
     return cache;
 }
-
 // Update the block by the most recent use
-size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blocks){
+size_t** LRUCACHEL2(size_t** cache, size_t address, int block_offset, int sets, int blocks){
     // use bit manipulation to obtain the the corresponding set and tag
     size_t index = (address >> block_offset) & ((1 << sets) - 1);
     //size_t tag = address >> (block_offset + sets);
@@ -294,6 +293,33 @@ size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blo
             flag = 1;
             cache[index][i] = cache[index][i + 1];
         }
+    }
+    cache[index][i] = address;
+
+    return cache;
+}
+// Update the block by the most recent use
+size_t** LRU(size_t** cache, size_t address, int block_offset, int sets, int blocks, size_t **cache_l2, int blocks_offset_l2, int sets_l2, int blocks_l2){
+    // use bit manipulation to obtain the the corresponding set and tag
+    size_t index = (address >> block_offset) & ((1 << sets) - 1);
+    //size_t tag = address >> (block_offset + sets);
+    int flag = 0;
+    int isFull = 1;
+    int i;
+    for(i = 0; i < blocks - 1; i++){
+        if(cache[index][i + 1] == (size_t) NULL){
+            isFull = 0;
+            break;
+        }
+        // Find for a true flag
+        //if(cache[index][i] == tag || flag){
+        if(cache[index][i] == address || flag){
+            flag = 1;
+            cache[index][i] = cache[index][i + 1];
+        }
+    }
+    if (isFull == 1){
+        cache_l2 = FIFOCACHE2(cache_l2,cache[index][0],blocks_offset_l2,sets_l2,blocks_l2);
     }
     cache[index][i] = address;
 
